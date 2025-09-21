@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:lotto_application/config/api_endpoints.dart';
 import 'package:lotto_application/pages/login.dart';
-import 'package:lotto_application/pages/owner/Owner_draw.dart';
 import 'package:lotto_application/services/user_session.dart';
 
 class EditPage extends StatefulWidget {
@@ -19,6 +18,15 @@ class _EditPageState extends State<EditPage> {
   bool _isLoading = false;
   // int _selectedIndex = 1;
   // String url = '';
+  bool _isResetting = false; // ← ย้ายออกมาไว้ตรงนี้
+  final TextEditingController _adminCodeCtl = // ← ย้ายออกมาไว้ตรงนี้
+      TextEditingController();
+
+  @override
+  void dispose() {
+    _adminCodeCtl.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -97,81 +105,154 @@ class _EditPageState extends State<EditPage> {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(10, 5, 10, 0),
-                  child: FilledButton(
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (BuildContext context) {
-                          return AlertDialog(
-                            content: const Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Center(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.center,
+                  child: SingleChildScrollView(
+                    child: FilledButton(
+                      onPressed: () {
+                        showDialog(
+                          context: context,
+                          builder: (BuildContext context) {
+                            return StatefulBuilder(
+                              builder: (ctx, setStateDialog) {
+                                return AlertDialog(
+                                  title: const Text(
+                                    "ยืนยันการลบข้อมูลทั้งหมด",
+                                    textAlign: TextAlign.center,
+                                  ),
+                                  content: Column(
+                                    mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      Text(
-                                        "ยืนยันการลบ",
-                                        style: TextStyle(
-                                          color: Colors.red,
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.bold,
-                                        ),
+                                      const Text(
+                                        "พิมพ์รหัสแอดมินเพื่อยืนยันการรีเซ็ตระบบ",
+                                        textAlign: TextAlign.center,
                                       ),
-                                      SizedBox(height: 10),
-                                      Text(
-                                        "ข้อมูลทั้งหมด",
-                                        style: TextStyle(
-                                          color: Colors.red,
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 22,
+                                      const SizedBox(height: 12),
+                                      TextField(
+                                        controller: _adminCodeCtl,
+                                        obscureText: true,
+                                        textInputAction: TextInputAction.done,
+                                        decoration: const InputDecoration(
+                                          labelText: 'รหัสแอดมิน',
+                                          hintText: 'ใส่รหัสแอดมิน',
+                                          prefixIcon: Icon(Icons.lock_outline),
+                                          border: OutlineInputBorder(),
                                         ),
+                                        onSubmitted: (_) async {
+                                          if (_isResetting) return;
+                                          final code = _adminCodeCtl.text
+                                              .trim();
+                                          if (code.isEmpty) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              const SnackBar(
+                                                content: Text(
+                                                  'กรุณากรอกรหัสแอดมิน',
+                                                ),
+                                              ),
+                                            );
+                                            return;
+                                          }
+                                          setStateDialog(
+                                            () => _isResetting = true,
+                                          );
+                                          final ok = await resetSystem(code);
+                                          if (ctx.mounted) {
+                                            setStateDialog(
+                                              () => _isResetting = false,
+                                            );
+                                            if (ok) Navigator.of(ctx).pop();
+                                          }
+                                        },
                                       ),
                                     ],
                                   ),
-                                ),
-                              ],
-                            ),
-                            actions: [
-                              Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceBetween,
-                                children: [
-                                  TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(context).pop(),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: Colors.black,
-                                      backgroundColor: const Color(0xFFD80000),
-                                      minimumSize: const Size(100, 40),
-                                    ),
-                                    child: const Text("ยกเลิก"),
+                                  actionsPadding: const EdgeInsets.symmetric(
+                                    horizontal: 16,
+                                    vertical: 8,
                                   ),
-                                  TextButton(
-                                    onPressed: () {
-                                      Navigator.of(context).pop();
-                                    },
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: Colors.black,
-                                      backgroundColor: const Color(0xFFFFEB85),
-                                      minimumSize: const Size(100, 40),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: _isResetting
+                                          ? null
+                                          : () => Navigator.of(ctx).pop(),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.white,
+                                        backgroundColor: const Color(
+                                          0xFFD80000,
+                                        ),
+                                        minimumSize: const Size(100, 40),
+                                      ),
+                                      child: const Text("ยกเลิก"),
                                     ),
-                                    child: const Text("ยืนยันการลบ"),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          );
-                        },
-                      );
-                    },
-                    style: ElevatedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      backgroundColor: const Color(0xFFD80000),
-                      minimumSize: const Size(150, 40),
+                                    TextButton(
+                                      onPressed: _isResetting
+                                          ? null
+                                          : () async {
+                                              final code = _adminCodeCtl.text
+                                                  .trim();
+                                              if (code.isEmpty) {
+                                                ScaffoldMessenger.of(
+                                                  context,
+                                                ).showSnackBar(
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      'กรุณากรอกรหัสแอดมิน',
+                                                    ),
+                                                  ),
+                                                );
+                                                return;
+                                              }
+                                              setStateDialog(
+                                                () => _isResetting = true,
+                                              );
+                                              final ok = await resetSystem(
+                                                code,
+                                              );
+                                              if (ctx.mounted) {
+                                                setStateDialog(
+                                                  () => _isResetting = false,
+                                                );
+                                                if (ok)
+                                                  Navigator.of(
+                                                    ctx,
+                                                  ).pop(); // ปิด dialog เมื่อสำเร็จ
+                                              }
+                                              if (ok) {
+                                                _adminCodeCtl.clear();
+                                                // (ออปชัน) logout/push ไปหน้า Login ถ้าต้องการ
+                                              }
+                                            },
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: Colors.black,
+                                        backgroundColor: const Color(
+                                          0xFFFFEB85,
+                                        ),
+                                        minimumSize: const Size(100, 40),
+                                      ),
+                                      child: _isResetting
+                                          ? const SizedBox(
+                                              width: 18,
+                                              height: 18,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                              ),
+                                            )
+                                          : const Text("ยืนยันการลบ"),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                          },
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        foregroundColor: Colors.white,
+                        backgroundColor: const Color(0xFFD80000),
+                        minimumSize: const Size(150, 40),
+                      ),
+                      child: const Text('Reset All'),
                     ),
-                    child: const Text('Reset All'),
                   ),
                 ),
               ],
@@ -235,6 +316,74 @@ class _EditPageState extends State<EditPage> {
         ),
       ),
     );
+  }
+
+  Future<bool> resetSystem(String adminCode) async {
+    // อนุญาตเฉพาะผู้ใช้ role = admin
+    final user = UserSession().currentUser;
+    if (user == null || (user.role?.toLowerCase() != 'admin')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('คุณไม่มีสิทธิ์ทำรายการนี้')),
+        );
+      }
+      return false;
+    }
+
+    if (adminCode.trim().isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('กรุณากรอกรหัสยืนยัน')));
+      }
+      return false;
+    }
+
+    try {
+      final res = await http.post(
+        Uri.parse(ApiEndpoints.resetSystem), // ให้ใช้ชื่อเดียวกันทุกที่
+        headers: {'Content-Type': 'application/json'},
+        // ถ้า backend ใช้ตรวจสอบรหัส ให้ส่งไปด้วย
+        body: jsonEncode({
+          'adminUserId': user.userId,
+          'adminCode': adminCode,
+          'confirm': true,
+        }),
+      );
+
+      final msg = _extractMessage(res.body) ?? 'รีเซ็ตระบบสำเร็จ';
+      if (!mounted) return res.statusCode >= 200 && res.statusCode < 300;
+
+      if (res.statusCode >= 200 && res.statusCode < 300) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(msg)));
+        return true;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ล้มเหลว: ${res.statusCode} - $msg')),
+        );
+        return false;
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้: $e')),
+        );
+      }
+      return false;
+    }
+  }
+
+  // ถ้ายังไม่มี helper นี้ในไฟล์ ให้ใส่เพิ่ม (สั้น ๆ)
+  String? _extractMessage(String body) {
+    try {
+      final j = jsonDecode(body);
+      return (j['message'] ?? j['error'] ?? j['detail'] ?? j['status'])
+          ?.toString();
+    } catch (_) {
+      return null;
+    }
   }
 
   void generateTickets() async {
